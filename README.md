@@ -132,19 +132,6 @@ Per-job keys:
 | `keep_runs` | no | Per-job history cap (overrides global) |
 | `keep_days` | no | Drop runs older than N days |
 
-## HTTP endpoints
-
-| Method & path | Purpose |
-|---|---|
-| `GET /` | Dashboard |
-| `GET /job/{name}` | Job page (history, chain, log) |
-| `POST /job/{name}/run` | Run now |
-| `POST /job/{name}/cancel` | Cancel the running execution |
-| `POST /job/{name}/toggle` | Disable / enable the job |
-| `POST /reload` | Reload config in place (also `SIGHUP`) |
-| `GET /metrics` | Prometheus metrics |
-| `GET /healthz` | Health check (used by the Docker `HEALTHCHECK`) |
-
 ## How it works
 
 - **Scheduling** is in-process ([robfig/cron]); a missed tick (host was down) is
