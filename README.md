@@ -85,14 +85,14 @@ Env vars (override flags): `CRONKIT_CONFIG`, `CRONKIT_DATA`, `CRONKIT_ADDR`.
 ### Docker
 
 Pull the published multi-arch image (`linux/amd64`, `linux/arm64`) from Docker Hub
-([`doino-gretchenliev/cronkit`](https://hub.docker.com/r/doino-gretchenliev/cronkit)):
+([`gretch/cronkit`](https://hub.docker.com/r/gretch/cronkit)):
 
 ```sh
 docker run -d --name cronkit -p 8080:8080 \
   -v "$PWD/jobs.yml:/config/jobs.yml:ro" \
   -v cronkit-data:/data \
   -v /var/run/docker.sock:/var/run/docker.sock \   # only if jobs use `docker`
-  doino-gretchenliev/cronkit:latest
+  gretch/cronkit:latest
 ```
 
 Or build it yourself:
