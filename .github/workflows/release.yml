@@ -22,10 +22,19 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # Normalize the namespace: Docker refs must be lowercase with no
+      # whitespace, regardless of how the secret was entered.
+      - id: img
+        env:
+          DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          ns=$(printf '%s' "$DH_USER" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+          echo "image=${ns}/cronkit" >> "$GITHUB_OUTPUT"
+
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/cronkit
+          images: ${{ steps.img.outputs.image }}
           flavor: latest=false
           tags: |
             type=semver,pattern={{version}}
