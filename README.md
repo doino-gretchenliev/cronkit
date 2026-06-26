@@ -31,7 +31,7 @@ Jobs are declared in a YAML file (`jobs.yml`), so they live in version control,
 not a tool's database:
 
 ```yaml
-timezone: Europe/Sofia
+timezone: America/New_York
 keep_runs: 50
 jobs:
   - name: kopia-watchdog
