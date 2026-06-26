@@ -93,21 +93,57 @@ docker run -d --name cronkit -p 8080:8080 \
   cronkit
 ```
 
-## Notifications, retention, reload, metrics
+## Configuration
 
-- **Failure email** — set a top-level `notify:` (`smtp_host`, `from`, `to`,
-  optional `on:` statuses, default `failed`+`timeout`). Sent through a plain SMTP
-  relay (no auth). Per-job `notify: false` opts a job out.
-- **Retention** — global `keep_runs:`; per-job `keep_runs:` and/or `keep_days:`
-  override it (a run is dropped if it exceeds either). Each run's `output.log` is
-  capped by `max_log_bytes:` (default 20 MiB) with a truncation notice.
-- **Reload** — `POST /reload` or send `SIGHUP`; the config is re-read and the
-  scheduler rebuilt in place (no restart). Invalid config keeps the old one.
-- **Interrupted runs** — on startup, any run left `running` by a crash/restart is
-  marked `interrupted`.
-- **Metrics** — `GET /metrics` exposes Prometheus gauges/counters per job
-  (last status/duration/exit/timestamp, retained run counts, running, disabled).
-- **Health** — `GET /healthz` returns `ok` (used by the Docker `HEALTHCHECK`).
+Global (top-level keys in `jobs.yml`):
+
+| Key | Default | Description |
+|---|---|---|
+| `timezone` | `Local` | IANA tz for scheduling, the UI, and log timestamps |
+| `keep_runs` | `50` | Global history cap — newest N runs kept per job |
+| `max_log_bytes` | `20971520` (20 MiB) | Per-run `output.log` cap; a truncation notice is appended when hit |
+| `notify` | — | Failure-email block (see below); omit to disable email |
+| `jobs` | — | The list of jobs |
+
+`notify` block:
+
+| Key | Default | Description |
+|---|---|---|
+| `smtp_host` | — | SMTP relay host (required) |
+| `smtp_port` | `25` | Relay port |
+| `from` | — | Sender address (required) |
+| `to` | — | Recipient list (required) |
+| `on` | `[failed, timeout]` | Run statuses that trigger an email |
+
+Per-job keys:
+
+| Key | Required | Description |
+|---|---|---|
+| `name` | yes | Unique job name |
+| `command` | yes | Shell command, run via `/bin/sh -c` |
+| `schedule` | no | 5-field cron or `@hourly`/`@every 30m`; omit = manual/chain only |
+| `timeout` | no | Go duration (e.g. `10m`); on expiry the whole process tree is killed |
+| `enabled` | no (`true`) | `false` keeps the job in the file but unscheduled |
+| `group` | no | Concurrency group — at most one job per group runs at a time |
+| `on_success` | no | Jobs to trigger after this one succeeds |
+| `on_failure` | no | Jobs to trigger after this one fails/times out |
+| `description` | no | Free-text note shown in the UI |
+| `notify` | no (`true`) | `false` suppresses failure email for this job |
+| `keep_runs` | no | Per-job history cap (overrides global) |
+| `keep_days` | no | Drop runs older than N days |
+
+## HTTP endpoints
+
+| Method & path | Purpose |
+|---|---|
+| `GET /` | Dashboard |
+| `GET /job/{name}` | Job page (history, chain, log) |
+| `POST /job/{name}/run` | Run now |
+| `POST /job/{name}/cancel` | Cancel the running execution |
+| `POST /job/{name}/toggle` | Disable / enable the job |
+| `POST /reload` | Reload config in place (also `SIGHUP`) |
+| `GET /metrics` | Prometheus metrics |
+| `GET /healthz` | Health check (used by the Docker `HEALTHCHECK`) |
 
 ## How it works
 
