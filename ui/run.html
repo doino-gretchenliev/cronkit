@@ -1,0 +1,25 @@
+{{define "title"}}cronkit — {{.Run.Job}} run{{end}}
+{{define "content"}}
+<p class="crumb"><a href="/">jobs</a> / <a href="/job/{{.Run.Job}}">{{.Run.Job}}</a> / run</p>
+<h1>{{.Run.Job}} <span class="badge {{statusClass .Run.Status}}">{{.Run.Status}}</span></h1>
+<p class="meta">
+  started {{fmttime .Run.Start}} · {{dur .Run.Duration}}{{if not .Run.End.IsZero}} · exit {{.Run.ExitCode}}{{end}} · {{.Run.Trigger}}
+  · <a href="/job/{{.Run.Job}}/run/{{.Run.ID}}/raw">raw log</a>
+</p>
+<pre id="log" class="log">{{.Log}}</pre>
+{{if .Live}}
+<script>
+(function () {
+  var pre = document.getElementById('log');
+  var es = new EventSource('/job/{{.Run.Job}}/run/{{.Run.ID}}/stream');
+  es.onmessage = function (e) {
+    var atBottom = (window.innerHeight + window.scrollY) >= (document.body.offsetHeight - 40);
+    pre.textContent += e.data + "\n";
+    if (atBottom) window.scrollTo(0, document.body.scrollHeight);
+  };
+  es.addEventListener('end', function () { es.close(); location.reload(); });
+  es.onerror = function () { es.close(); };
+})();
+</script>
+{{end}}
+{{end}}

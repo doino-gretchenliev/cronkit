@@ -1,0 +1,92 @@
+{{define "title"}}cronkit — {{.Job.Name}}{{end}}
+{{define "content"}}
+<p class="crumb"><a href="/">jobs</a> / {{.Job.Name}}</p>
+<h1>{{.Job.Name}}{{if not .Enabled}} <span class="badge none">disabled</span>{{end}}</h1>
+<p class="meta">
+  {{if .Job.Schedule}}<code>{{.Job.Schedule}}</code>{{else}}<span class="muted">manual/chain only</span>{{end}}{{if .Next}} · next {{reltime .Next}}{{end}}
+  {{if .Job.Group}} · group <span class="badge group">{{.Job.Group}}</span>{{end}}
+  {{if .Job.Timeout}} · timeout <code>{{.Job.Timeout}}</code>{{end}}
+</p>
+{{if .Job.Description}}<p class="desc">{{.Job.Description}}</p>{{end}}
+<pre class="cmd">{{.Job.Command}}</pre>
+<div class="btnrow">
+  {{if .Running}}<form method="post" action="/job/{{.Job.Name}}/cancel"><button class="danger">Cancel</button></form>
+  {{else if .Enabled}}<form method="post" action="/job/{{.Job.Name}}/run"><button>Run now</button></form>{{end}}
+  {{if .Job.IsEnabled}}<form method="post" action="/job/{{.Job.Name}}/toggle"><button>{{if .Disabled}}Enable{{else}}Disable{{end}}</button></form>{{end}}
+</div>
+
+{{if .Chain}}
+<h2 class="section">Chain</h2>
+<div class="chainwrap">{{.Chain}}</div>
+<p class="muted legend"><span class="lg ok">■</span> on success&nbsp;&nbsp;<span class="lg fail">■</span> on failure</p>
+{{end}}
+
+<h2 class="section">History</h2>
+<div class="sparkwrap">{{sparkline .SparkRuns}}</div>
+
+<form class="filterbar" method="get" action="/job/{{.Job.Name}}">
+  <select name="status" onchange="this.form.submit()">
+    <option value="">all statuses</option>
+    <option value="success" {{if eq .Status "success"}}selected{{end}}>success</option>
+    <option value="failed" {{if eq .Status "failed"}}selected{{end}}>failed</option>
+    <option value="timeout" {{if eq .Status "timeout"}}selected{{end}}>timeout</option>
+    <option value="running" {{if eq .Status "running"}}selected{{end}}>running</option>
+  </select>
+  <label class="flab">exit <input type="number" name="exit" value="{{.Exit}}"></label>
+  <label class="flab">dur <input type="number" step="any" name="dmin" value="{{.Dmin}}"> – <input type="number" step="any" name="dmax" value="{{.Dmax}}"> s</label>
+  <select name="since" onchange="this.form.submit()">
+    <option value="">any time</option>
+    <option value="1m" {{if eq .Since "1m"}}selected{{end}}>last 1 min</option>
+    <option value="5m" {{if eq .Since "5m"}}selected{{end}}>last 5 min</option>
+    <option value="10m" {{if eq .Since "10m"}}selected{{end}}>last 10 min</option>
+    <option value="30m" {{if eq .Since "30m"}}selected{{end}}>last 30 min</option>
+    <option value="1h" {{if eq .Since "1h"}}selected{{end}}>last hour</option>
+    <option value="24h" {{if eq .Since "24h"}}selected{{end}}>last 24h</option>
+    <option value="7d" {{if eq .Since "7d"}}selected{{end}}>last 7d</option>
+  </select>
+  <input type="hidden" name="sort" value="{{.Sort}}">
+  <input type="hidden" name="dir" value="{{.Dir}}">
+  <button type="submit">Filter</button>
+  {{if .FiltersActive}}<a class="clear" href="/job/{{.Job.Name}}?sort={{.Sort}}&amp;dir={{.Dir}}">clear</a>{{end}}
+</form>
+
+<table class="grid">
+<thead><tr>
+  {{range .Headers}}<th><a href="{{.Href}}">{{.Label}}{{if .Arrow}} {{.Arrow}}{{end}}</a></th>{{end}}
+  <th>Trigger</th>
+</tr></thead>
+<tbody>
+{{range .Runs}}
+<tr>
+  <td><a href="/job/{{.Job}}/run/{{.ID}}">{{reltime .Start}}</a></td>
+  <td><span class="badge {{statusClass .Status}}">{{.Status}}</span></td>
+  <td>{{dur .Duration}}</td>
+  <td>{{.ExitCode}}</td>
+  <td>{{.Trigger}}</td>
+</tr>
+{{end}}
+{{if not .Runs}}<tr><td colspan="5" class="muted">no runs match</td></tr>{{end}}
+</tbody>
+</table>
+
+<div class="pager">
+  {{if .PrevHref}}<a href="{{.PrevHref}}">← prev</a>{{else}}<span class="muted">← prev</span>{{end}}
+  <span class="muted">page {{.Page}} of {{.Pages}} · {{.Total}} run(s)</span>
+  {{if .NextHref}}<a href="{{.NextHref}}">next →</a>{{else}}<span class="muted">next →</span>{{end}}
+</div>
+
+<div class="refreshbar">
+  <button type="button" onclick="location.reload()">↻ Refresh now</button>
+  {{if .Running}}<span class="muted">a run is active — auto-refreshing every 5s</span>{{end}}
+</div>
+{{if .Running}}
+<script>
+setTimeout(function () {
+  if (document.hidden) return;
+  var el = document.activeElement;
+  if (el && (el.tagName === 'INPUT' || el.tagName === 'SELECT')) return;
+  location.reload();
+}, 5000);
+</script>
+{{end}}
+{{end}}

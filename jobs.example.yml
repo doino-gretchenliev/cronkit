@@ -1,0 +1,52 @@
+# cronkit jobs file. Copy to jobs.yml and edit.
+# Schedule accepts standard 5-field cron (min hour dom mon dow) or @-descriptors
+# (@hourly, @daily, @weekly, @every 30m). Commands run via `/bin/sh -c`.
+
+timezone: Europe/Sofia   # IANA name; default "Local"
+keep_runs: 50            # global history cap (per-job overridable)
+max_log_bytes: 20971520  # cap each run's output.log (default 20 MiB)
+
+# Optional: email on failure/timeout through an SMTP relay (no auth).
+notify:
+  smtp_host: mail        # e.g. an internal postfix relay
+  smtp_port: 25
+  from: cronkit@example.com
+  to: [me@example.com]
+  on: [failed, timeout]  # default: failed + timeout
+
+jobs:
+  - name: hello
+    schedule: "@every 1m"
+    description: "Demo job that greets and sleeps"
+    command: 'echo "hello from cronkit at $(date)"; sleep 2; echo done'
+    keep_runs: 100         # per-job: keep more history than the global default
+    keep_days: 30          # per-job: also drop runs older than 30 days
+    notify: false          # per-job: never email about this one
+
+  # standard 5-field cron (min hour dom mon dow): 09:30 every weekday
+  - name: weekday-report
+    schedule: "30 9 * * 1-5"
+    command: "/usr/local/bin/daily-report.sh"
+    timeout: 5m
+
+  - name: disk-free
+    schedule: "*/5 * * * *"   # cron: every 5 minutes
+    command: "df -h /"
+    timeout: 30s
+
+  # --- concurrency group: backup and reindex never run at the same time ---
+  - name: backup
+    schedule: "0 3 * * *"
+    group: storage          # at most one job in group "storage" runs at a time
+    command: "/usr/local/bin/backup.sh"
+    on_success: [reindex]   # chaining: run reindex only if backup succeeds
+
+  - name: reindex
+    group: storage          # same group -> won't run while backup is running
+    command: "/usr/local/bin/reindex.sh"
+    # no schedule: runs only when chained from backup (or "Run now")
+
+  - name: nightly-noop
+    schedule: "@daily"
+    command: "true"
+    enabled: false

@@ -1,0 +1,51 @@
+{{define "title"}}cronkit — jobs{{end}}
+{{define "content"}}
+<form class="filterbar" method="get" action="/">
+  <input type="search" name="q" value="{{.Q}}" placeholder="search job name…">
+  <select name="group" onchange="this.form.submit()">
+    <option value="">all groups</option>
+    {{range .Groups}}<option value="{{.}}" {{if eq . $.Group}}selected{{end}}>{{.}}</option>{{end}}
+    <option value="{{.NoGroup}}" {{if eq .NoGroup .Group}}selected{{end}}>(no group)</option>
+  </select>
+  <button type="submit">Filter</button>
+  {{if .Filtered}}<a class="clear" href="/">clear</a> <span class="muted">showing {{.Shown}} of {{.Total}}</span>{{end}}
+</form>
+
+<table class="grid">
+<thead>
+<tr><th>Job</th><th>Schedule</th><th>Last run</th><th>Status</th><th>Duration</th><th>Next</th><th></th></tr>
+</thead>
+<tbody>
+{{range .Jobs}}
+<tr>
+  <td><a class="job" href="/job/{{.Job.Name}}">{{.Job.Name}}</a>{{if .Job.Group}} <a href="/?group={{.Job.Group}}" title="filter by group"><span class="badge group">{{.Job.Group}}</span></a>{{end}}{{if not .Enabled}} <span class="badge none">disabled</span>{{end}}{{if .Job.Description}}<div class="jobdesc muted">{{.Job.Description}}</div>{{end}}</td>
+  <td>{{if .Job.Schedule}}<code>{{.Job.Schedule}}</code>{{else}}<span class="muted">manual/chain</span>{{end}}</td>
+  <td>{{if .Last}}<a href="/job/{{.Job.Name}}/run/{{.Last.ID}}">{{reltime .Last.Start}}</a>{{else}}<span class="muted">—</span>{{end}}</td>
+  <td>
+    {{if .Running}}<span class="badge running">running</span>
+    {{else if .Last}}<span class="badge {{statusClass .Last.Status}}">{{.Last.Status}}</span>
+    {{else}}<span class="badge none">never</span>{{end}}
+  </td>
+  <td>{{if .Last}}{{dur .Last.Duration}}{{else}}<span class="muted">—</span>{{end}}</td>
+  <td>{{if .Next}}{{reltime .Next}}{{else}}<span class="muted">—</span>{{end}}</td>
+  <td class="actions">{{if .Running}}<form method="post" action="/job/{{.Job.Name}}/cancel"><button class="danger">Cancel</button></form>{{else if .Enabled}}<form method="post" action="/job/{{.Job.Name}}/run"><button>Run now</button></form>{{else}}<span class="muted">—</span>{{end}}</td>
+</tr>
+{{end}}
+{{if not .Jobs}}<tr><td colspan="7" class="muted">{{if .Filtered}}no jobs match the filter{{else}}no jobs configured{{end}}</td></tr>{{end}}
+</tbody>
+</table>
+
+<div class="refreshbar">
+  <button type="button" onclick="location.reload()">↻ Refresh now</button>
+  <form method="post" action="/reload"><button type="submit">Reload config</button></form>
+  <span class="muted">auto-refreshing every 10s</span>
+</div>
+<script>
+setTimeout(function () {
+  if (document.hidden) return;
+  var el = document.activeElement;
+  if (el && (el.tagName === 'INPUT' || el.tagName === 'SELECT')) return; // don't interrupt filtering
+  location.reload();
+}, 10000);
+</script>
+{{end}}
