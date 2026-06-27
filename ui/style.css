@@ -167,6 +167,10 @@ button.danger:hover:not([disabled]) { border-color: var(--fail); color: #fff; }
 .badge.pending  { color: #9cc4e6; border-color: #2b4a63; background: #122231; }
 .badge.blocked  { color: #d3a0a0; border-color: #4a3636; background: #241c1c; }
 
+.pbar { height: 4px; width: 90px; margin-top: 4px; background: #1e242e; border-radius: 3px; overflow: hidden; }
+.pbar span { display: block; height: 100%; background: #5aa2ff; border-radius: 3px; }
+.pbar.over span { background: var(--fail); width: 100% !important; }
+
 h2.section { font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; margin: 22px 0 6px; }
 
 .chainwrap { overflow-x: auto; margin: 8px 0; padding: 4px 0; }

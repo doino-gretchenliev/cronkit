@@ -62,6 +62,38 @@ func relWords(t time.Time) string {
 	return fmt.Sprintf("%d %s ago", n, unit)
 }
 
+// progressBar renders a mini progress bar (elapsed vs average run time).
+func progressBar(pct int, overdue bool, avg time.Duration) template.HTML {
+	cls := "pbar"
+	title := fmt.Sprintf("%d%% of ~%s average", pct, humanDur(avg))
+	if overdue {
+		cls += " over"
+		title = fmt.Sprintf("over the ~%s average", humanDur(avg))
+	}
+	return template.HTML(fmt.Sprintf(`<div class="%s" title="%s"><span style="width:%d%%"></span></div>`,
+		cls, template.HTMLEscapeString(title), pct))
+}
+
+// avgRunDuration averages the durations of completed runs (newest-first slice,
+// most recent `limit`). Returns 0 if none.
+func avgRunDuration(runs []*Run, limit int) time.Duration {
+	var sum time.Duration
+	var n int
+	for _, r := range runs {
+		if r.Status == StatusRunning || r.End.IsZero() {
+			continue
+		}
+		sum += r.End.Sub(r.Start)
+		if n++; n >= limit {
+			break
+		}
+	}
+	if n == 0 {
+		return 0
+	}
+	return sum / time.Duration(n)
+}
+
 // statusClass maps a run status to a CSS class for the status badge.
 func statusClass(st RunStatus) string {
 	switch st {

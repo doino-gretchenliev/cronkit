@@ -28,7 +28,7 @@
     {{else if .Last}}<span class="badge {{statusClass .Last.Status}}">{{.Last.Status}}</span>
     {{else}}<span class="badge none">never</span>{{end}}
   </td>
-  <td>{{if .Last}}{{dur .Last.Duration}}{{else}}<span class="muted">—</span>{{end}}</td>
+  <td>{{if .Last}}{{dur .Last.Duration}}{{.Bar}}{{else}}<span class="muted">—</span>{{end}}</td>
   <td>{{.RunCount}}</td>
   <td>{{if .Next}}{{reltime .Next}}{{else}}<span class="muted">—</span>{{end}}</td>
   <td class="actions">{{if .Running}}<form method="post" action="/job/{{.Job.Name}}/cancel"><button class="danger">Cancel</button></form>{{else if .Enabled}}<form method="post" action="/job/{{.Job.Name}}/run"><button>Run now</button></form>{{else}}<span class="muted">—</span>{{end}}</td>

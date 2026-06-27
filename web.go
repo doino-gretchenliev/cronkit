@@ -174,9 +174,10 @@ type jobRow struct {
 	Running  bool
 	Disabled bool       // disabled from the UI
 	Enabled  bool       // effective: config-enabled AND not UI-disabled
-	Pending  int        // coalesced triggers awaiting a run
-	Fires    *time.Time // when a debounced run will fire (if waiting)
-	Blocked  bool       // waiting because a same-group job is running
+	Pending  int           // coalesced triggers awaiting a run
+	Fires    *time.Time    // when a debounced run will fire (if waiting)
+	Blocked  bool          // waiting because a same-group job is running
+	Bar      template.HTML // mini progress bar while running (elapsed vs avg)
 }
 
 // noGroup is the group-filter sentinel for "jobs with no group".
@@ -240,6 +241,19 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 			}
 			if !row.Running && s.runner.GroupBusy(j.Group) {
 				row.Blocked = true
+			}
+		}
+		if row.Running && last != nil {
+			if avg := avgRunDuration(runs, 20); avg > 0 {
+				pct := int(time.Since(last.Start) * 100 / avg)
+				over := pct > 100
+				if pct > 100 {
+					pct = 100
+				}
+				if pct < 0 {
+					pct = 0
+				}
+				row.Bar = progressBar(pct, over, avg)
 			}
 		}
 		rows = append(rows, row)
