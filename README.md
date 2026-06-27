@@ -156,8 +156,11 @@ Per-job keys:
 
 ## Scope / non-goals
 
-No auth (run it behind a reverse proxy on a trusted network — the run-now
-endpoint executes your configured commands). No multi-server and no plugins.
+The web UI has no auth (run it behind a reverse proxy on a trusted network — the
+run-now endpoint executes your configured commands). The **integration API**
+(`/api/...`) *is* protected by a single API key — view/rotate it on the
+**Settings** page; authenticate with `Authorization: Bearer <key>` or
+`X-API-Key: <key>`. No multi-server and no plugins.
 Chaining is one-directional triggers (`on_success`/`on_failure`), not a full
 dependency graph with fan-in/joins — if you need DAGs with joins or distributed
 workers, you want Airflow or Cronicle.

@@ -2,7 +2,11 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
+	"crypto/subtle"
 	"embed"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
@@ -33,7 +37,30 @@ type Server struct {
 	runner     *Runner
 	configPath string
 	version    string
+	apikey     atomic.Pointer[string]
 	tmpl       map[string]*template.Template
+}
+
+func genAPIKey() string {
+	b := make([]byte, 24)
+	_, _ = rand.Read(b)
+	return "ck_" + base64.RawURLEncoding.EncodeToString(b)
+}
+
+// APIKey returns the current integration API key.
+func (s *Server) APIKey() string {
+	if p := s.apikey.Load(); p != nil {
+		return *p
+	}
+	return ""
+}
+
+// RotateAPIKey generates, persists, and installs a new API key.
+func (s *Server) RotateAPIKey() string {
+	k := genAPIKey()
+	_ = s.store.SaveAPIKey(k)
+	s.apikey.Store(&k)
+	return k
 }
 
 func (s *Server) cfg() *Config        { return s.cfgp.Load() }
@@ -65,6 +92,13 @@ func (s *Server) Reload() error {
 func NewServer(cfgp *atomic.Pointer[Config], schedp *atomic.Pointer[Scheduler], store *Store, runner *Runner, configPath, version string) (*Server, error) {
 	s := &Server{cfgp: cfgp, schedp: schedp, store: store, runner: runner, configPath: configPath, version: version}
 
+	key := store.LoadAPIKey()
+	if key == "" {
+		key = genAPIKey()
+		_ = store.SaveAPIKey(key)
+	}
+	s.apikey.Store(&key)
+
 	funcs := template.FuncMap{
 		"dur":         humanDur,
 		"fmttime":     s.fmttime,
@@ -74,7 +108,7 @@ func NewServer(cfgp *atomic.Pointer[Config], schedp *atomic.Pointer[Scheduler], 
 		"version":     func() string { return s.version },
 	}
 	s.tmpl = map[string]*template.Template{}
-	for _, page := range []string{"index.html", "job.html", "run.html"} {
+	for _, page := range []string{"index.html", "job.html", "run.html", "settings.html"} {
 		t, err := template.New("layout.html").Funcs(funcs).ParseFS(uiFS, "ui/layout.html", "ui/"+page)
 		if err != nil {
 			return nil, fmt.Errorf("parse %s: %w", page, err)
@@ -96,6 +130,17 @@ func (s *Server) Mux() http.Handler {
 	mux.HandleFunc("POST /job/{name}/toggle", s.handleToggle)
 	mux.HandleFunc("POST /reload", s.handleReload)
 	mux.HandleFunc("GET /metrics", s.handleMetrics)
+
+	// Settings page (open, like the rest of the UI) — shows + rotates the API key.
+	mux.HandleFunc("GET /settings", s.handleSettings)
+	mux.HandleFunc("POST /settings/rotate-key", s.handleRotateKey)
+
+	// Integration API — protected by the single API key.
+	mux.HandleFunc("GET /api/jobs", s.withAPIKey(s.apiListJobs))
+	mux.HandleFunc("POST /api/jobs/{name}/run", s.withAPIKey(s.apiRun))
+	mux.HandleFunc("POST /api/jobs/{name}/cancel", s.withAPIKey(s.apiCancel))
+	mux.HandleFunc("POST /api/jobs/{name}/disable", s.withAPIKey(s.apiSetDisabled(true)))
+	mux.HandleFunc("POST /api/jobs/{name}/enable", s.withAPIKey(s.apiSetDisabled(false)))
 	mux.HandleFunc("GET /static/style.css", s.handleCSS)
 	mux.HandleFunc("GET /favicon.svg", s.handleFavicon)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -629,6 +674,119 @@ func (s *Server) handleCSS(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	_, _ = w.Write(b)
+}
+
+// --- settings (API key) -----------------------------------------------------
+
+func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
+	s.render(w, "settings.html", map[string]any{"APIKey": s.APIKey()})
+}
+
+func (s *Server) handleRotateKey(w http.ResponseWriter, r *http.Request) {
+	s.RotateAPIKey()
+	redirectBack(w, r, "/settings")
+}
+
+// --- integration API ---------------------------------------------------------
+
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+// withAPIKey rejects requests without a valid API key (Bearer or X-API-Key).
+func (s *Server) withAPIKey(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.checkAPIKey(r) {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="cronkit"`)
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
+			return
+		}
+		h(w, r)
+	}
+}
+
+func (s *Server) checkAPIKey(r *http.Request) bool {
+	want := s.APIKey()
+	if want == "" {
+		return false
+	}
+	got := r.Header.Get("X-API-Key")
+	if got == "" {
+		if a := r.Header.Get("Authorization"); strings.HasPrefix(a, "Bearer ") {
+			got = strings.TrimPrefix(a, "Bearer ")
+		}
+	}
+	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
+}
+
+func (s *Server) apiListJobs(w http.ResponseWriter, r *http.Request) {
+	type jobInfo struct {
+		Name       string     `json:"name"`
+		Schedule   string     `json:"schedule,omitempty"`
+		Group      string     `json:"group,omitempty"`
+		Enabled    bool       `json:"enabled"`
+		Running    bool       `json:"running"`
+		LastStatus string     `json:"last_status,omitempty"`
+		LastRun    *time.Time `json:"last_run,omitempty"`
+		Runs       int        `json:"runs"`
+	}
+	out := []jobInfo{}
+	for _, j := range s.cfg().Jobs {
+		runs := s.store.ListRuns(j.Name)
+		info := jobInfo{
+			Name:     j.Name,
+			Schedule: j.Schedule,
+			Group:    j.Group,
+			Enabled:  j.IsEnabled() && !s.runner.IsDisabled(j.Name),
+			Running:  s.runner.IsRunning(j.Name),
+			Runs:     len(runs),
+		}
+		if len(runs) > 0 {
+			info.LastStatus = string(runs[0].Status)
+			t := runs[0].Start
+			info.LastRun = &t
+		}
+		out = append(out, info)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"jobs": out})
+}
+
+func (s *Server) apiRun(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	job, ok := s.cfg().Job(name)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "job not found"})
+		return
+	}
+	go func() {
+		if _, err := s.runner.Run(job, "api"); err != nil {
+			log.Printf("api run %s: %v", name, err)
+		}
+	}()
+	writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "job": name, "triggered": true})
+}
+
+func (s *Server) apiCancel(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if _, ok := s.cfg().Job(name); !ok {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "job not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "job": name, "canceled": s.runner.Cancel(name)})
+}
+
+func (s *Server) apiSetDisabled(disabled bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := r.PathValue("name")
+		if _, ok := s.cfg().Job(name); !ok {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": "job not found"})
+			return
+		}
+		s.runner.SetDisabled(name, disabled)
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "job": name, "disabled": disabled})
+	}
 }
 
 func (s *Server) handleFavicon(w http.ResponseWriter, r *http.Request) {

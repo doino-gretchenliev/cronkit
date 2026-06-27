@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -213,6 +214,22 @@ func (s *Store) LoadDisabled() map[string]bool {
 		}
 	}
 	return set
+}
+
+func (s *Store) apiKeyPath() string { return filepath.Join(s.dir, "apikey") }
+
+// LoadAPIKey reads the persisted integration API key ("" if none).
+func (s *Store) LoadAPIKey() string {
+	b, err := os.ReadFile(s.apiKeyPath())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// SaveAPIKey persists the integration API key (owner-readable only).
+func (s *Store) SaveAPIKey(key string) error {
+	return os.WriteFile(s.apiKeyPath(), []byte(key+"\n"), 0o600)
 }
 
 // SaveDisabled persists the set of UI-disabled job names.

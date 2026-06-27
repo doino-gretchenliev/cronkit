@@ -1,0 +1,31 @@
+{{define "title"}}cronkit — settings{{end}}
+{{define "content"}}
+<p class="crumb"><a href="/">jobs</a> / settings</p>
+<h1>Integration API</h1>
+<p class="meta">Control jobs programmatically. Authenticate every request with the key
+below, via <code>Authorization: Bearer &lt;key&gt;</code> or <code>X-API-Key: &lt;key&gt;</code>.</p>
+
+<h2 class="section">API key</h2>
+<pre class="cmd">{{.APIKey}}</pre>
+<form method="post" action="/settings/rotate-key"
+      onsubmit="return confirm('Rotate the API key? Existing integrations will stop working until updated with the new key.')">
+  <button class="danger">Rotate key</button>
+</form>
+<p class="meta">Rotating immediately invalidates the old key.</p>
+
+<h2 class="section">Endpoints</h2>
+<table class="grid">
+<thead><tr><th>Method &amp; path</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td><code>GET /api/jobs</code></td><td>List jobs with status</td></tr>
+<tr><td><code>POST /api/jobs/{name}/run</code></td><td>Run now</td></tr>
+<tr><td><code>POST /api/jobs/{name}/cancel</code></td><td>Cancel the running execution</td></tr>
+<tr><td><code>POST /api/jobs/{name}/disable</code></td><td>Disable the job</td></tr>
+<tr><td><code>POST /api/jobs/{name}/enable</code></td><td>Enable the job</td></tr>
+</tbody>
+</table>
+
+<h2 class="section">Example</h2>
+<pre class="cmd">curl -X POST -H "Authorization: Bearer {{.APIKey}}" \
+  http://HOST/api/jobs/backup/run</pre>
+{{end}}

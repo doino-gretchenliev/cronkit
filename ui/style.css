@@ -24,7 +24,12 @@ header {
   padding: 14px 22px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
+.navlink { color: var(--muted); text-decoration: none; font-size: 13px; }
+.navlink:hover { color: var(--fg); }
 
 .brand { color: var(--fg); text-decoration: none; font-weight: 600; letter-spacing: .2px; display: inline-flex; align-items: center; gap: 8px; }
 .brand .logo { display: block; }
