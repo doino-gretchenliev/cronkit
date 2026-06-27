@@ -448,15 +448,14 @@ func (s *Server) handleJob(w http.ResponseWriter, r *http.Request) {
 	if n, ok := s.sched().NextRun(name); ok {
 		data["Next"] = &n
 	}
-	if w := s.runner.Waiting(name); w.Count > 0 {
-		data["Pending"] = w.Count
-		if w.Armed {
-			ft := w.FiresAt
-			data["Fires"] = &ft
-		}
-		if !s.runner.IsRunning(name) && s.runner.GroupBusy(job.Group) {
-			data["Blocked"] = true
-		}
+	wait := s.runner.Waiting(name)
+	data["Pending"] = wait.Count // always set: the template does `gt .Pending 0`
+	if wait.Armed {
+		ft := wait.FiresAt
+		data["Fires"] = &ft
+	}
+	if wait.Count > 0 && !s.runner.IsRunning(name) && s.runner.GroupBusy(job.Group) {
+		data["Blocked"] = true
 	}
 	s.render(w, "job.html", data)
 }
