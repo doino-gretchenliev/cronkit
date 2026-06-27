@@ -92,7 +92,7 @@ table.grid {
 .drainbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; padding: 10px 14px; border: 1px solid #5a481f; background: #271f0f; color: #f0d99a; border-radius: 8px; }
 
 .filterbar { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
-.filterbar input[type=search], .filterbar select {
+.filterbar input, .filterbar select {
   background: #0b0e13; color: var(--fg); border: 1px solid var(--border);
   border-radius: 6px; padding: 5px 10px; font-size: 13px;
 }
@@ -200,4 +200,21 @@ svg.spark .bar.canceled    { fill: #6b7280; }
 svg.spark .bar.interrupted { fill: #8a5a5a; }
 
 .desc { color: var(--muted); margin: 2px 0 12px; }
-.jobdesc { font-size: 12px; margin-top: 2px; max-width: 52ch; }
+.jobdesc { font-size: 12px; margin-top: 2px; max-width: 52ch; white-space: normal; }
+
+/* ---- mobile ---- */
+@media (max-width: 680px) {
+  main { padding: 14px 12px; }
+  header { padding: 12px 14px; }
+  h1 { font-size: 18px; }
+  /* wide tables scroll horizontally instead of breaking the layout */
+  .grid { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
+  .grid th, .grid td { white-space: nowrap; }
+  .filterbar { gap: 6px; }
+  .filterbar input[type=search] { min-width: 0; flex: 1 1 140px; }
+  .drainbar { flex-direction: column; align-items: flex-start; }
+  .btnrow, .refreshbar, .pager { flex-wrap: wrap; }
+  .crumb, .meta { word-break: break-word; white-space: normal; }
+  pre.cmd, pre.log { font-size: 12px; }
+  .rel:hover::after { max-width: 90vw; white-space: normal; }
+}
