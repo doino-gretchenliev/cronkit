@@ -117,6 +117,49 @@ func TestCancel(t *testing.T) {
 	}
 }
 
+func TestDebounceCoalesces(t *testing.T) {
+	job := Job{Name: "deb", Command: "true", Debounce: "150ms"}
+	rn := newTestRunner(t, &Config{Jobs: []Job{job}})
+	// three triggers inside the window -> one run, coalesced=3
+	for i := 0; i < 3; i++ {
+		rn.Trigger(job, "api")
+		time.Sleep(20 * time.Millisecond)
+	}
+	var runs []*Run
+	for i := 0; i < 100; i++ {
+		runs = rn.store.ListRuns("deb")
+		if len(runs) > 0 && runs[0].Status != StatusRunning {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("want exactly 1 coalesced run, got %d", len(runs))
+	}
+	if runs[0].Coalesced != 3 {
+		t.Errorf("coalesced = %d, want 3", runs[0].Coalesced)
+	}
+	if runs[0].Trigger != "debounced" {
+		t.Errorf("trigger = %q, want debounced", runs[0].Trigger)
+	}
+}
+
+func TestCoalesceWhileRunning(t *testing.T) {
+	job := Job{Name: "cw", Command: "sleep 1", Debounce: "50ms"}
+	rn := newTestRunner(t, &Config{Jobs: []Job{job}})
+	rn.Trigger(job, "api") // fires after 50ms, then runs ~1s
+	waitRunning(t, rn, "cw")
+	rn.Trigger(job, "api") // lands while running -> coalesced, one trailing run
+	// expect 2 runs total within a few seconds
+	for i := 0; i < 200; i++ {
+		if len(rn.store.ListRuns("cw")) >= 2 {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Errorf("want a trailing run after the in-flight one; got %d", len(rn.store.ListRuns("cw")))
+}
+
 func TestChaining(t *testing.T) {
 	cfg := &Config{Jobs: []Job{
 		{Name: "a", Command: "true", OnSuccess: []string{"b"}},

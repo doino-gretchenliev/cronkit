@@ -25,10 +25,11 @@ const (
 // Run is the record of one execution of a job. It is persisted as meta.json
 // next to the run's output.log under <data>/<job>/<id>/.
 type Run struct {
-	ID       string    `json:"id"`      // start time as unix-nanos string (sortable, unique)
-	Job      string    `json:"job"`     //
-	Trigger  string    `json:"trigger"` // "schedule" or "manual"
-	Start    time.Time `json:"start"`
+	ID        string    `json:"id"`                  // start time as unix-nanos string (sortable, unique)
+	Job       string    `json:"job"`                 //
+	Trigger   string    `json:"trigger"`             // "schedule", "manual", "api", "chain", "debounced"
+	Coalesced int       `json:"coalesced,omitempty"` // triggers folded into this run (debounced)
+	Start     time.Time `json:"start"`
 	End      time.Time `json:"end,omitempty"`
 	ExitCode int       `json:"exit_code"`
 	Status   RunStatus `json:"status"`

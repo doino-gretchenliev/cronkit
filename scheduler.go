@@ -1,9 +1,7 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -28,9 +26,7 @@ func NewScheduler(cfg *Config, runner *Runner) (*Scheduler, error) {
 			continue
 		}
 		id, err := c.AddFunc(job.Schedule, func() {
-			if _, err := runner.Run(job, "schedule"); err != nil && !errors.Is(err, ErrDisabled) {
-				log.Printf("job %s skipped: %v", job.Name, err)
-			}
+			runner.Trigger(job, "schedule")
 		})
 		if err != nil {
 			return nil, fmt.Errorf("job %q schedule %q: %w", job.Name, job.Schedule, err)

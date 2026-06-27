@@ -586,11 +586,7 @@ func (s *Server) handleRunNow(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	go func() {
-		if _, err := s.runner.Run(job, "manual"); err != nil {
-			log.Printf("manual run %s: %v", name, err)
-		}
-	}()
+	s.runner.Trigger(job, "manual")
 	redirectBack(w, r, "/job/"+name)
 }
 
@@ -794,12 +790,12 @@ func (s *Server) apiRun(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "job not found"})
 		return
 	}
-	go func() {
-		if _, err := s.runner.Run(job, "api"); err != nil {
-			log.Printf("api run %s: %v", name, err)
-		}
-	}()
-	writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "job": name, "triggered": true})
+	res := s.runner.Trigger(job, "api")
+	out := map[string]any{"ok": true, "job": name, "status": res.Action}
+	if res.Action == "debounced" {
+		out["fires_at"] = res.FiresAt.Format(time.RFC3339)
+	}
+	writeJSON(w, http.StatusAccepted, out)
 }
 
 func (s *Server) apiCancel(w http.ResponseWriter, r *http.Request) {

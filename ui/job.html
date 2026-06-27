@@ -62,7 +62,7 @@
   <td><span class="badge {{statusClass .Status}}">{{.Status}}</span></td>
   <td>{{dur .Duration}}</td>
   <td>{{.ExitCode}}</td>
-  <td>{{.Trigger}}</td>
+  <td>{{.Trigger}}{{if gt .Coalesced 1}} <span class="muted">×{{.Coalesced}}</span>{{end}}</td>
 </tr>
 {{end}}
 {{if not .Runs}}<tr><td colspan="5" class="muted">no runs match</td></tr>{{end}}

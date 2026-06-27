@@ -39,7 +39,30 @@ type Job struct {
 	// days. Both may be combined.
 	KeepRuns int `yaml:"keep_runs"`
 	KeepDays int `yaml:"keep_days"`
+
+	// Debounce coalesces a burst of triggers into a single trailing run: a
+	// trigger arms a timer for `debounce`; more triggers within the window reset
+	// it; the job runs once when it goes quiet. `debounce_max` caps the total
+	// delay from the first trigger so a continuous trickle still runs. Debounced
+	// jobs also coalesce a trigger that lands while the job is running into one
+	// trailing run on finish (so nothing is missed). Empty = run immediately.
+	Debounce    string `yaml:"debounce"`
+	DebounceMax string `yaml:"debounce_max"`
 }
+
+func parseDurOr0(s string) time.Duration {
+	if s == "" {
+		return 0
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0
+	}
+	return d
+}
+
+func (j Job) DebounceDur() time.Duration    { return parseDurOr0(j.Debounce) }
+func (j Job) DebounceMaxDur() time.Duration { return parseDurOr0(j.DebounceMax) }
 
 // IsEnabled reports whether the job should be scheduled. Absent = enabled.
 func (j Job) IsEnabled() bool { return j.Enabled == nil || *j.Enabled }
@@ -132,6 +155,13 @@ func LoadConfig(path string) (*Config, error) {
 		// "run now" button.
 		if _, err := j.parseTimeout(); err != nil {
 			return nil, fmt.Errorf("job %q timeout %q: %w", j.Name, j.Timeout, err)
+		}
+		for label, val := range map[string]string{"debounce": j.Debounce, "debounce_max": j.DebounceMax} {
+			if val != "" {
+				if _, err := time.ParseDuration(val); err != nil {
+					return nil, fmt.Errorf("job %q %s %q: %w", j.Name, label, val, err)
+				}
+			}
 		}
 		seen[j.Name] = true
 	}

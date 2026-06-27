@@ -46,6 +46,15 @@ jobs:
     command: "/usr/local/bin/reindex.sh"
     # no schedule: runs only when chained from backup (or "Run now")
 
+  # --- debounce: collapse a burst of triggers into one trailing run ---
+  # e.g. driven by *arr webhooks hitting POST /api/jobs/overlays/run on import.
+  - name: overlays
+    debounce: 5m          # run 5m after the last trigger settles
+    debounce_max: 15m     # but never delay a pending run past 15m
+    command: "kometa --run --run-libraries Movies"
+    # no schedule: runs only when triggered (a trigger during a run also queues
+    # exactly one follow-up so nothing imported mid-run is missed)
+
   - name: nightly-noop
     schedule: "@daily"
     command: "true"

@@ -141,6 +141,16 @@ Per-job keys:
 | `notify` | no (`true`) | `false` suppresses failure email for this job |
 | `keep_runs` | no | Per-job history cap (overrides global) |
 | `keep_days` | no | Drop runs older than N days |
+| `debounce` | no | Coalesce a burst of triggers into one trailing run, fired this long after the last trigger |
+| `debounce_max` | no | Cap the total debounce delay from the first trigger (so a constant trickle still runs) |
+
+**Debouncing / batching:** with `debounce` set, a trigger (schedule, manual, or
+API) doesn't run the job — it arms a trailing timer that more triggers reset, so
+a flurry collapses into one run when it goes quiet (`debounce_max` bounds the
+wait). A trigger that lands *while the job is running* also queues exactly one
+follow-up run on finish, so nothing is missed. The run records how many triggers
+folded in (shown as `×N`). Ideal for expensive jobs driven by bursty webhooks
+(overlay/metadata runs, reindexers, backup-on-change).
 
 ## How it works
 

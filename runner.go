@@ -37,6 +37,9 @@ type Runner struct {
 	groupBusy map[string]bool               // group -> a member is in flight
 	cancels   map[string]context.CancelFunc // job name -> cancel its current run
 	disabled  map[string]bool               // job name -> disabled from the UI
+	pending   map[string]int                // job name -> coalesced triggers awaiting a run
+	timers    map[string]*time.Timer        // job name -> debounce timer
+	firstAt   map[string]time.Time          // job name -> first trigger of the current batch
 }
 
 func NewRunner(cfgp *atomic.Pointer[Config], store *Store) *Runner {
@@ -47,6 +50,109 @@ func NewRunner(cfgp *atomic.Pointer[Config], store *Store) *Runner {
 		groupBusy: map[string]bool{},
 		cancels:   map[string]context.CancelFunc{},
 		disabled:  store.LoadDisabled(),
+		pending:   map[string]int{},
+		timers:    map[string]*time.Timer{},
+		firstAt:   map[string]time.Time{},
+	}
+}
+
+// TriggerResult describes what a Trigger call did.
+type TriggerResult struct {
+	Action  string    // "started" | "debounced" | "coalesced" | "disabled"
+	FiresAt time.Time // when a debounced run will fire (Action == "debounced")
+}
+
+// Trigger is the entry point for schedule/manual/api triggers. Jobs without
+// debounce start a run immediately (skipped if already running, as before).
+// Debounced jobs coalesce a burst into a single trailing run.
+func (rn *Runner) Trigger(job Job, source string) TriggerResult {
+	if rn.IsDisabled(job.Name) {
+		return TriggerResult{Action: "disabled"}
+	}
+	deb := job.DebounceDur()
+	if deb <= 0 {
+		go func() { _, _ = rn.run(job, source, 0, 0) }()
+		return TriggerResult{Action: "started"}
+	}
+
+	rn.mu.Lock()
+	defer rn.mu.Unlock()
+	rn.pending[job.Name]++
+	if rn.running[job.Name] {
+		return TriggerResult{Action: "coalesced"} // honored on finish (drainAfter)
+	}
+	now := time.Now()
+	if rn.firstAt[job.Name].IsZero() {
+		rn.firstAt[job.Name] = now
+	}
+	delay := deb
+	if max := job.DebounceMaxDur(); max > 0 {
+		if rem := rn.firstAt[job.Name].Add(max).Sub(now); rem < delay {
+			delay = rem
+		}
+	}
+	if delay < 0 {
+		delay = 0
+	}
+	if t := rn.timers[job.Name]; t != nil {
+		t.Stop()
+	}
+	name := job.Name
+	rn.timers[name] = time.AfterFunc(delay, func() { rn.fireBatch(name) })
+	return TriggerResult{Action: "debounced", FiresAt: now.Add(delay)}
+}
+
+// fireBatch runs the coalesced batch once the debounce window goes quiet.
+func (rn *Runner) fireBatch(name string) {
+	rn.mu.Lock()
+	delete(rn.timers, name)
+	delete(rn.firstAt, name)
+	if rn.running[name] {
+		rn.mu.Unlock() // pending stays; drainAfter fires it when the run finishes
+		return
+	}
+	n := rn.pending[name]
+	rn.pending[name] = 0
+	rn.mu.Unlock()
+	if n == 0 {
+		return
+	}
+	if job, ok := rn.cfg().Job(name); ok {
+		go func() { _, _ = rn.run(job, "debounced", 0, n) }()
+	}
+}
+
+// drainAfter fires one pending coalesced run when a run finishes — for the same
+// job (coalesce-while-running) or a same-group job that was waiting on the group.
+func (rn *Runner) drainAfter(finished Job) {
+	rn.mu.Lock()
+	candidates := []string{finished.Name}
+	if finished.Group != "" {
+		for _, j := range rn.cfg().Jobs {
+			if j.Group == finished.Group && j.Name != finished.Name {
+				candidates = append(candidates, j.Name)
+			}
+		}
+	}
+	var fireName string
+	var fireN int
+	for _, name := range candidates {
+		if rn.pending[name] == 0 || rn.running[name] {
+			continue
+		}
+		if finished.Group != "" && rn.groupBusy[finished.Group] {
+			break // group re-acquired meanwhile; that run's finish will drain
+		}
+		fireName, fireN = name, rn.pending[name]
+		rn.pending[name] = 0
+		break
+	}
+	rn.mu.Unlock()
+	if fireName == "" {
+		return
+	}
+	if job, ok := rn.cfg().Job(fireName); ok {
+		go func() { _, _ = rn.run(job, "debounced", 0, fireN) }()
 	}
 }
 
@@ -136,18 +242,28 @@ func (rn *Runner) release(job Job) {
 // Run executes the job synchronously, then triggers any chained jobs.
 // trigger is "schedule", "manual" or "chain".
 func (rn *Runner) Run(job Job, trigger string) (*Run, error) {
-	return rn.run(job, trigger, 0)
+	return rn.run(job, trigger, 0, 0)
 }
 
-func (rn *Runner) run(job Job, trigger string, depth int) (*Run, error) {
+func (rn *Runner) run(job Job, trigger string, depth, coalesced int) (*Run, error) {
 	if rn.IsDisabled(job.Name) {
 		return nil, ErrDisabled
 	}
 	if err := rn.acquire(job); err != nil {
+		// Debounced jobs coalesce a trigger that lands while busy into one
+		// trailing run, fired when the job/group frees up (drainAfter).
+		if job.DebounceDur() > 0 && (errors.Is(err, ErrBusy) || errors.Is(err, ErrGroupBusy)) {
+			rn.mu.Lock()
+			rn.pending[job.Name]++
+			rn.mu.Unlock()
+		}
 		return nil, err
 	}
-	r, err := rn.execute(job, trigger)
+	r, err := rn.execute(job, trigger, coalesced)
 	rn.release(job) // release before chaining so a same-group child can run
+	if job.DebounceDur() > 0 {
+		rn.drainAfter(job)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -157,14 +273,15 @@ func (rn *Runner) run(job Job, trigger string, depth int) (*Run, error) {
 
 // execute runs the command and persists the run record. It does not touch the
 // concurrency locks (the caller owns them).
-func (rn *Runner) execute(job Job, trigger string) (*Run, error) {
+func (rn *Runner) execute(job Job, trigger string, coalesced int) (*Run, error) {
 	start := time.Now()
 	r := &Run{
-		ID:      strconv.FormatInt(start.UnixNano(), 10),
-		Job:     job.Name,
-		Trigger: trigger,
-		Start:   start,
-		Status:  StatusRunning,
+		ID:        strconv.FormatInt(start.UnixNano(), 10),
+		Job:       job.Name,
+		Trigger:   trigger,
+		Coalesced: coalesced,
+		Start:     start,
+		Status:    StatusRunning,
 	}
 	if err := rn.store.writeMeta(r); err != nil {
 		return nil, err
@@ -271,7 +388,7 @@ func (rn *Runner) chain(job Job, status RunStatus, depth int) {
 				log.Printf("job %s: chained job %q not found", job.Name, name)
 				continue
 			}
-			if _, err := rn.run(child, "chain", depth+1); err != nil {
+			if _, err := rn.run(child, "chain", depth+1, 0); err != nil {
 				log.Printf("chained job %s skipped: %v", name, err)
 			}
 		}
