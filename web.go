@@ -121,6 +121,7 @@ func (s *Server) render(w http.ResponseWriter, page string, data any) {
 type jobRow struct {
 	Job      Job
 	Last     *Run
+	RunCount int // recorded (retained) runs
 	Next     *time.Time
 	Running  bool
 	Disabled bool // disabled from the UI
@@ -161,9 +162,15 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		dis := s.runner.IsDisabled(j.Name)
+		runs := s.store.ListRuns(j.Name)
+		var last *Run
+		if len(runs) > 0 {
+			last = runs[0]
+		}
 		row := jobRow{
 			Job:      j,
-			Last:     s.store.LastRun(j.Name),
+			Last:     last,
+			RunCount: len(runs),
 			Running:  s.runner.IsRunning(j.Name),
 			Disabled: dis,
 			Enabled:  j.IsEnabled() && !dis,

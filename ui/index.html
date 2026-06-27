@@ -13,7 +13,7 @@
 
 <table class="grid">
 <thead>
-<tr><th>Job</th><th>Schedule</th><th>Last run</th><th>Status</th><th>Duration</th><th>Next</th><th></th></tr>
+<tr><th>Job</th><th>Schedule</th><th>Last run</th><th>Status</th><th>Duration</th><th>Runs</th><th>Next</th><th></th></tr>
 </thead>
 <tbody>
 {{range .Jobs}}
@@ -27,11 +27,12 @@
     {{else}}<span class="badge none">never</span>{{end}}
   </td>
   <td>{{if .Last}}{{dur .Last.Duration}}{{else}}<span class="muted">—</span>{{end}}</td>
+  <td>{{.RunCount}}</td>
   <td>{{if .Next}}{{reltime .Next}}{{else}}<span class="muted">—</span>{{end}}</td>
   <td class="actions">{{if .Running}}<form method="post" action="/job/{{.Job.Name}}/cancel"><button class="danger">Cancel</button></form>{{else if .Enabled}}<form method="post" action="/job/{{.Job.Name}}/run"><button>Run now</button></form>{{else}}<span class="muted">—</span>{{end}}</td>
 </tr>
 {{end}}
-{{if not .Jobs}}<tr><td colspan="7" class="muted">{{if .Filtered}}no jobs match the filter{{else}}no jobs configured{{end}}</td></tr>{{end}}
+{{if not .Jobs}}<tr><td colspan="8" class="muted">{{if .Filtered}}no jobs match the filter{{else}}no jobs configured{{end}}</td></tr>{{end}}
 </tbody>
 </table>
 
