@@ -482,13 +482,21 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRaw(w http.ResponseWriter, r *http.Request) {
 	name, id := r.PathValue("name"), r.PathValue("id")
-	b, err := os.ReadFile(s.store.LogPath(name, id))
+	f, err := os.Open(s.store.LogPath(name, id))
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	// ServeContent streams from the file (with Range support), never loading the
+	// whole log into memory.
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	_, _ = w.Write(b)
+	http.ServeContent(w, r, "output.log", fi.ModTime(), f)
 }
 
 // handleStream tails the active run's log over Server-Sent Events. It re-reads
@@ -522,13 +530,17 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 			offset = n
 		}
 	}
+	const (
+		sseChunk      = 1 << 20 // bytes read per tick (bounds memory per connection)
+		sseFlushAfter = 64 << 10 // flush a newline-less buffer past this (e.g. \r progress)
+	)
 	var buf []byte
 	emit := func(line string) { fmt.Fprintf(w, "data: %s\n\n", line) }
 
 	for {
 		if f, err := os.Open(logPath); err == nil {
 			if _, err := f.Seek(offset, io.SeekStart); err == nil {
-				chunk, _ := io.ReadAll(f)
+				chunk, _ := io.ReadAll(io.LimitReader(f, sseChunk))
 				offset += int64(len(chunk))
 				buf = append(buf, chunk...)
 			}
@@ -540,6 +552,12 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 				}
 				emit(string(buf[:i]))
 				buf = buf[i+1:]
+			}
+			// Don't let a long newline-less run (carriage-return progress bars)
+			// grow the buffer unbounded — flush it as a partial line.
+			if len(buf) > sseFlushAfter {
+				emit(string(buf))
+				buf = buf[:0]
 			}
 			flusher.Flush()
 		}
