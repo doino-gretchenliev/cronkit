@@ -612,7 +612,11 @@ func (s *Server) handleRunNow(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	s.runner.Trigger(job, "manual")
+	if r.FormValue("force") == "1" {
+		s.runner.ForceRun(job)
+	} else {
+		s.runner.Trigger(job, "manual")
+	}
 	redirectBack(w, r, "/job/"+name)
 }
 
@@ -822,6 +826,11 @@ func (s *Server) apiRun(w http.ResponseWriter, r *http.Request) {
 	job, ok := s.cfg().Job(name)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "job not found"})
+		return
+	}
+	if r.URL.Query().Get("force") == "1" {
+		s.runner.ForceRun(job)
+		writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "job": name, "status": "started"})
 		return
 	}
 	res := s.runner.Trigger(job, "api")

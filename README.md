@@ -150,7 +150,9 @@ a flurry collapses into one run when it goes quiet (`debounce_max` bounds the
 wait). A trigger that lands *while the job is running* also queues exactly one
 follow-up run on finish, so nothing is missed. The run records how many triggers
 folded in (shown as `×N`). Ideal for expensive jobs driven by bursty webhooks
-(overlay/metadata runs, reindexers, backup-on-change).
+(overlay/metadata runs, reindexers, backup-on-change). To skip the wait and run a
+debounced job immediately, use **Force run** in the UI or `POST
+/api/jobs/<name>/run?force=1` (single-instance/group guards still apply).
 
 ## How it works
 

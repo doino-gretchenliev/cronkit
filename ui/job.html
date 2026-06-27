@@ -13,7 +13,7 @@
 <pre class="cmd">{{.Job.Command}}</pre>
 <div class="btnrow">
   {{if .Running}}<form method="post" action="/job/{{.Job.Name}}/cancel"><button class="danger">Cancel</button></form>
-  {{else if .Enabled}}<form method="post" action="/job/{{.Job.Name}}/run"><button>Run now</button></form>{{end}}
+  {{else if .Enabled}}<form method="post" action="/job/{{.Job.Name}}/run"><button title="{{if .Job.Debounce}}honors debounce{{else}}run now{{end}}">Run now</button></form>{{if .Job.Debounce}}<form method="post" action="/job/{{.Job.Name}}/run"><input type="hidden" name="force" value="1"><button title="run immediately, skip the debounce wait">Force run</button></form>{{end}}{{end}}
   {{if .Job.IsEnabled}}<form method="post" action="/job/{{.Job.Name}}/toggle"><button>{{if .Disabled}}Enable{{else}}Disable{{end}}</button></form>{{end}}
 </div>
 

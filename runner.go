@@ -92,6 +92,24 @@ type TriggerResult struct {
 	FiresAt time.Time // when a debounced run will fire (Action == "debounced")
 }
 
+// ForceRun runs the job now in the background, bypassing the debounce window. It
+// absorbs any pending batch (cancels the armed timer and folds its count into
+// this run), since forcing a run is what those queued triggers wanted.
+// Single-instance and group guards still apply.
+func (rn *Runner) ForceRun(job Job) {
+	rn.mu.Lock()
+	n := rn.pending[job.Name]
+	delete(rn.pending, job.Name)
+	if t := rn.timers[job.Name]; t != nil {
+		t.Stop()
+		delete(rn.timers, job.Name)
+	}
+	delete(rn.firstAt, job.Name)
+	delete(rn.firesAt, job.Name)
+	rn.mu.Unlock()
+	go func() { _, _ = rn.run(job, "manual", 0, n) }()
+}
+
 // Trigger is the entry point for schedule/manual/api triggers. Jobs without
 // debounce start a run immediately (skipped if already running, as before).
 // Debounced jobs coalesce a burst into a single trailing run.
