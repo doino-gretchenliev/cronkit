@@ -26,7 +26,8 @@ header {
   background: var(--panel);
 }
 
-.brand { color: var(--fg); text-decoration: none; font-weight: 600; letter-spacing: .2px; }
+.brand { color: var(--fg); text-decoration: none; font-weight: 600; letter-spacing: .2px; display: inline-flex; align-items: center; gap: 8px; }
+.brand .logo { display: block; }
 
 main { padding: 22px; max-width: 1100px; margin: 0 auto; }
 

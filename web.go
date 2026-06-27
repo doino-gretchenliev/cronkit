@@ -95,6 +95,7 @@ func (s *Server) Mux() http.Handler {
 	mux.HandleFunc("POST /reload", s.handleReload)
 	mux.HandleFunc("GET /metrics", s.handleMetrics)
 	mux.HandleFunc("GET /static/style.css", s.handleCSS)
+	mux.HandleFunc("GET /favicon.svg", s.handleFavicon)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		_, _ = io.WriteString(w, "ok\n")
@@ -625,6 +626,17 @@ func (s *Server) handleCSS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	_, _ = w.Write(b)
+}
+
+func (s *Server) handleFavicon(w http.ResponseWriter, r *http.Request) {
+	b, err := uiFS.ReadFile("ui/favicon.svg")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
 	_, _ = w.Write(b)
 }
 

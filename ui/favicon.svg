@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="cronkit">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8ec5ff"/>
+      <stop offset="1" stop-color="#3b5bdb"/>
+    </linearGradient>
+  </defs>
+  <rect x="3" y="3" width="58" height="58" rx="15" fill="url(#bg)"/>
+  <!-- crown / top button + side nub (stopwatch) -->
+  <rect x="27" y="6" width="10" height="6" rx="2.5" fill="#eef4ff"/>
+  <rect x="30.5" y="11" width="3" height="4" fill="#eef4ff"/>
+  <rect x="46" y="16" width="6" height="4" rx="2" transform="rotate(45 49 18)" fill="#eef4ff"/>
+  <!-- face -->
+  <circle cx="32" cy="39" r="19" fill="#102036" fill-opacity="0.22" stroke="#eef4ff" stroke-width="4"/>
+  <!-- tick marks at 12/3/6/9 -->
+  <g stroke="#eef4ff" stroke-width="3" stroke-linecap="round" opacity="0.9">
+    <line x1="32" y1="22.5" x2="32" y2="26.5"/>
+    <line x1="48.5" y1="39" x2="44.5" y2="39"/>
+    <line x1="32" y1="55.5" x2="32" y2="51.5"/>
+    <line x1="15.5" y1="39" x2="19.5" y2="39"/>
+  </g>
+  <!-- hands (amber) -->
+  <line x1="32" y1="39" x2="42" y2="31" stroke="#ffce6b" stroke-width="4" stroke-linecap="round"/>
+  <line x1="32" y1="39" x2="32" y2="28.5" stroke="#ffce6b" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="32" cy="39" r="3.2" fill="#ffce6b"/>
+</svg>
