@@ -21,6 +21,8 @@ var (
 	ErrGroupBusy = errors.New("group busy")
 	// ErrDisabled: the job is disabled from the UI.
 	ErrDisabled = errors.New("job disabled")
+	// ErrDraining: drain mode is on — no new runs start.
+	ErrDraining = errors.New("draining: new runs paused")
 )
 
 // maxChainDepth guards against chain cycles (A→B→A).
@@ -29,8 +31,9 @@ const maxChainDepth = 16
 // Runner executes jobs, records each execution, enforces single-instance +
 // group concurrency, and fires chained jobs on completion.
 type Runner struct {
-	cfgp  *atomic.Pointer[Config] // current config (swapped on reload)
-	store *Store
+	cfgp     *atomic.Pointer[Config] // current config (swapped on reload)
+	store    *Store
+	draining atomic.Bool // drain mode: block new runs (running jobs finish)
 
 	mu        sync.Mutex
 	running   map[string]bool               // job name -> in flight (single-instance guard)
@@ -97,6 +100,9 @@ type TriggerResult struct {
 // this run), since forcing a run is what those queued triggers wanted.
 // Single-instance and group guards still apply.
 func (rn *Runner) ForceRun(job Job) {
+	if rn.draining.Load() {
+		return
+	}
 	rn.mu.Lock()
 	n := rn.pending[job.Name]
 	delete(rn.pending, job.Name)
@@ -116,6 +122,9 @@ func (rn *Runner) ForceRun(job Job) {
 func (rn *Runner) Trigger(job Job, source string) TriggerResult {
 	if rn.IsDisabled(job.Name) {
 		return TriggerResult{Action: "disabled"}
+	}
+	if rn.draining.Load() {
+		return TriggerResult{Action: "paused"}
 	}
 	deb := job.DebounceDur()
 	if deb <= 0 {
@@ -157,8 +166,8 @@ func (rn *Runner) fireBatch(name string) {
 	delete(rn.timers, name)
 	delete(rn.firstAt, name)
 	delete(rn.firesAt, name)
-	if rn.running[name] {
-		rn.mu.Unlock() // pending stays; drainAfter fires it when the run finishes
+	if rn.running[name] || rn.draining.Load() {
+		rn.mu.Unlock() // pending stays; fired later (on finish, or when drain lifts via a new trigger)
 		return
 	}
 	n := rn.pending[name]
@@ -175,6 +184,9 @@ func (rn *Runner) fireBatch(name string) {
 // drainAfter fires one pending coalesced run when a run finishes — for the same
 // job (coalesce-while-running) or a same-group job that was waiting on the group.
 func (rn *Runner) drainAfter(finished Job) {
+	if rn.draining.Load() {
+		return // don't start new runs while draining
+	}
 	rn.mu.Lock()
 	candidates := []string{finished.Name}
 	if finished.Group != "" {
@@ -213,6 +225,20 @@ func (rn *Runner) IsRunning(job string) bool {
 	rn.mu.Lock()
 	defer rn.mu.Unlock()
 	return rn.running[job]
+}
+
+// SetDraining toggles drain mode: when on, no new runs start (in-flight runs
+// finish). Not persisted — a restart clears it.
+func (rn *Runner) SetDraining(on bool) { rn.draining.Store(on) }
+
+// Draining reports whether drain mode is on.
+func (rn *Runner) Draining() bool { return rn.draining.Load() }
+
+// RunningCount returns how many jobs are currently executing.
+func (rn *Runner) RunningCount() int {
+	rn.mu.Lock()
+	defer rn.mu.Unlock()
+	return len(rn.running)
 }
 
 // IsDisabled reports whether the job is disabled from the UI.
@@ -298,6 +324,9 @@ func (rn *Runner) Run(job Job, trigger string) (*Run, error) {
 func (rn *Runner) run(job Job, trigger string, depth, coalesced int) (*Run, error) {
 	if rn.IsDisabled(job.Name) {
 		return nil, ErrDisabled
+	}
+	if rn.draining.Load() {
+		return nil, ErrDraining
 	}
 	if err := rn.acquire(job); err != nil {
 		// Debounced jobs coalesce a trigger that lands while busy into one

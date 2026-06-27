@@ -160,6 +160,21 @@ func TestCoalesceWhileRunning(t *testing.T) {
 	t.Errorf("want a trailing run after the in-flight one; got %d", len(rn.store.ListRuns("cw")))
 }
 
+func TestDraining(t *testing.T) {
+	rn := newTestRunner(t, &Config{})
+	rn.SetDraining(true)
+	if _, err := rn.Run(Job{Name: "d", Command: "true"}, "manual"); err != ErrDraining {
+		t.Errorf("while draining: got %v, want ErrDraining", err)
+	}
+	if rn.Trigger(Job{Name: "d", Command: "true"}, "api").Action != "paused" {
+		t.Errorf("Trigger while draining should be paused")
+	}
+	rn.SetDraining(false)
+	if _, err := rn.Run(Job{Name: "d", Command: "true"}, "manual"); err != nil {
+		t.Errorf("after resume: %v", err)
+	}
+}
+
 func TestChaining(t *testing.T) {
 	cfg := &Config{Jobs: []Job{
 		{Name: "a", Command: "true", OnSuccess: []string{"b"}},

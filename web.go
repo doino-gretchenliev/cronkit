@@ -129,6 +129,8 @@ func (s *Server) Mux() http.Handler {
 	mux.HandleFunc("POST /job/{name}/cancel", s.handleCancel)
 	mux.HandleFunc("POST /job/{name}/toggle", s.handleToggle)
 	mux.HandleFunc("POST /reload", s.handleReload)
+	mux.HandleFunc("POST /drain", s.handleDrain(true))
+	mux.HandleFunc("POST /resume", s.handleDrain(false))
 	mux.HandleFunc("GET /metrics", s.handleMetrics)
 
 	// Settings page (open, like the rest of the UI) — shows + rotates the API key.
@@ -141,6 +143,8 @@ func (s *Server) Mux() http.Handler {
 	mux.HandleFunc("POST /api/jobs/{name}/cancel", s.withAPIKey(s.apiCancel))
 	mux.HandleFunc("POST /api/jobs/{name}/disable", s.withAPIKey(s.apiSetDisabled(true)))
 	mux.HandleFunc("POST /api/jobs/{name}/enable", s.withAPIKey(s.apiSetDisabled(false)))
+	mux.HandleFunc("POST /api/drain", s.withAPIKey(s.apiDrain(true)))
+	mux.HandleFunc("POST /api/resume", s.withAPIKey(s.apiDrain(false)))
 	mux.HandleFunc("GET /static/style.css", s.handleCSS)
 	mux.HandleFunc("GET /favicon.svg", s.handleFavicon)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -260,14 +264,16 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.render(w, "index.html", map[string]any{
-		"Jobs":     rows,
-		"Groups":   groups,
-		"Q":        q,
-		"Group":    group,
-		"NoGroup":  noGroup,
-		"Total":    len(cfg.Jobs),
-		"Shown":    len(rows),
-		"Filtered": q != "" || group != "",
+		"Jobs":         rows,
+		"Groups":       groups,
+		"Q":            q,
+		"Group":        group,
+		"NoGroup":      noGroup,
+		"Total":        len(cfg.Jobs),
+		"Shown":        len(rows),
+		"Filtered":     q != "" || group != "",
+		"Draining":     s.runner.Draining(),
+		"RunningCount": s.runner.RunningCount(),
 	})
 }
 
@@ -668,6 +674,20 @@ func redirectBack(w http.ResponseWriter, r *http.Request, fallback string) {
 func (s *Server) handleReload(w http.ResponseWriter, r *http.Request) {
 	_ = s.Reload() // errors are logged; keep the old config on failure
 	redirectBack(w, r, "/")
+}
+
+func (s *Server) handleDrain(on bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		s.runner.SetDraining(on)
+		redirectBack(w, r, "/")
+	}
+}
+
+func (s *Server) apiDrain(on bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		s.runner.SetDraining(on)
+		writeJSON(w, http.StatusOK, map[string]any{"draining": on, "running": s.runner.RunningCount()})
+	}
 }
 
 // handleMetrics exposes Prometheus-format metrics. Counters are over retained

@@ -1,5 +1,11 @@
 {{define "title"}}cronkit — jobs{{end}}
 {{define "content"}}
+{{if .Draining}}
+<div class="drainbar">
+  <span>⏸ <strong>Drain mode</strong> — new runs are paused; {{.RunningCount}} still running. Safe to shut down at 0.</span>
+  <form method="post" action="/resume"><button>Resume</button></form>
+</div>
+{{end}}
 <form class="filterbar" method="get" action="/">
   <input type="search" name="q" value="{{.Q}}" placeholder="search job name…">
   <select name="group" onchange="this.form.submit()">
@@ -41,6 +47,7 @@
 <div class="refreshbar">
   <button type="button" onclick="location.reload()">↻ Refresh now</button>
   <form method="post" action="/reload"><button type="submit">Reload config</button></form>
+  {{if not .Draining}}<form method="post" action="/drain"><button type="submit" title="pause new runs so in-flight jobs can finish before shutdown">Prepare for shutdown</button></form>{{end}}
   <span class="muted">auto-refreshing every 10s</span>
 </div>
 <script>

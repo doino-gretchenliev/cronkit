@@ -154,6 +154,12 @@ folded in (shown as `×N`). Ideal for expensive jobs driven by bursty webhooks
 debounced job immediately, use **Force run** in the UI or `POST
 /api/jobs/<name>/run?force=1` (single-instance/group guards still apply).
 
+**Drain mode (safe shutdown):** the dashboard's **Prepare for shutdown** button
+(or `POST /api/drain`) pauses *all* new runs — from every source — so in-flight
+jobs can finish before a restart/redeploy; the banner shows how many are still
+running. **Resume** (or `POST /api/resume`) lifts it. Not persisted, so a restart
+starts un-drained.
+
 ## How it works
 
 - **Scheduling** is in-process ([robfig/cron]); a missed tick (host was down) is
