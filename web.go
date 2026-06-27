@@ -462,13 +462,22 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	// While running, leave the <pre> empty — the SSE stream delivers the log
-	// from the start. For finished runs, inline the (capped) log.
-	logText := ""
-	if run.Status != StatusRunning {
-		logText = s.readLogTail(name, id, displayLogCap)
+	// Inline the last chunk of the log immediately (for both running and finished
+	// runs). For a running run, the SSE stream then follows from the current end
+	// of file so the browser isn't flooded with the whole (possibly huge) log.
+	logText := s.readLogTail(name, id, displayLogCap)
+	var offset int64
+	if run.Status == StatusRunning {
+		if fi, err := os.Stat(s.store.LogPath(name, id)); err == nil {
+			offset = fi.Size()
+		}
 	}
-	s.render(w, "run.html", map[string]any{"Run": run, "Log": logText, "Live": run.Status == StatusRunning})
+	s.render(w, "run.html", map[string]any{
+		"Run":    run,
+		"Log":    logText,
+		"Live":   run.Status == StatusRunning,
+		"Offset": offset,
+	})
 }
 
 func (s *Server) handleRaw(w http.ResponseWriter, r *http.Request) {
@@ -505,7 +514,14 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	defer ticker.Stop()
 	ctx := r.Context()
 
+	// Start from ?offset (the end-of-file the page already rendered) so we only
+	// stream new output, not the whole log.
 	var offset int64
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n >= 0 {
+			offset = n
+		}
+	}
 	var buf []byte
 	emit := func(line string) { fmt.Fprintf(w, "data: %s\n\n", line) }
 

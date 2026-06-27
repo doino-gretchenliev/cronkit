@@ -11,7 +11,7 @@
 <script>
 (function () {
   var pre = document.getElementById('log');
-  var es = new EventSource('/job/{{.Run.Job}}/run/{{.Run.ID}}/stream');
+  var es = new EventSource('/job/{{.Run.Job}}/run/{{.Run.ID}}/stream?offset={{.Offset}}');
   es.onmessage = function (e) {
     var atBottom = (window.innerHeight + window.scrollY) >= (document.body.offsetHeight - 40);
     pre.textContent += e.data + "\n";
