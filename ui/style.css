@@ -165,6 +165,7 @@ button.danger:hover:not([disabled]) { border-color: var(--fail); color: #fff; }
 .badge.interrupted { color: #d6acac; border-color: #4a3232; background: #241b1b; }
 .badge.group    { color: #c9a8e0; border-color: #43335a; background: #1d1726; font-weight: 500; }
 .badge.pending  { color: #9cc4e6; border-color: #2b4a63; background: #122231; }
+.badge.blocked  { color: #d3a0a0; border-color: #4a3636; background: #241c1c; }
 
 h2.section { font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; margin: 22px 0 6px; }
 

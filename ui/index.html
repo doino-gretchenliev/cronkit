@@ -23,6 +23,7 @@
   <td>{{if .Last}}<a href="/job/{{.Job.Name}}/run/{{.Last.ID}}">{{reltime .Last.Start}}</a>{{else}}<span class="muted">—</span>{{end}}</td>
   <td>
     {{if .Running}}<span class="badge running">running</span>{{if gt .Pending 0}} <span class="badge pending" title="triggers queued during this run">+{{.Pending}}</span>{{end}}
+    {{else if .Blocked}}<span class="badge blocked" title="waiting — a job in the same group is running">blocked ×{{.Pending}}</span>
     {{else if gt .Pending 0}}<span class="badge pending">pending ×{{.Pending}}</span>
     {{else if .Last}}<span class="badge {{statusClass .Last.Status}}">{{.Last.Status}}</span>
     {{else}}<span class="badge none">never</span>{{end}}

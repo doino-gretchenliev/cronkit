@@ -176,6 +176,7 @@ type jobRow struct {
 	Enabled  bool       // effective: config-enabled AND not UI-disabled
 	Pending  int        // coalesced triggers awaiting a run
 	Fires    *time.Time // when a debounced run will fire (if waiting)
+	Blocked  bool       // waiting because a same-group job is running
 }
 
 // noGroup is the group-filter sentinel for "jobs with no group".
@@ -236,6 +237,9 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 				if row.Next == nil {
 					row.Next = &ft // surface the fire time for schedule-less jobs
 				}
+			}
+			if !row.Running && s.runner.GroupBusy(j.Group) {
+				row.Blocked = true
 			}
 		}
 		rows = append(rows, row)
@@ -435,6 +439,9 @@ func (s *Server) handleJob(w http.ResponseWriter, r *http.Request) {
 		if w.Armed {
 			ft := w.FiresAt
 			data["Fires"] = &ft
+		}
+		if !s.runner.IsRunning(name) && s.runner.GroupBusy(job.Group) {
+			data["Blocked"] = true
 		}
 	}
 	s.render(w, "job.html", data)
@@ -785,6 +792,7 @@ func (s *Server) apiListJobs(w http.ResponseWriter, r *http.Request) {
 		LastRun    *time.Time `json:"last_run,omitempty"`
 		Runs       int        `json:"runs"`
 		Pending    int        `json:"pending,omitempty"`
+		Blocked    bool       `json:"blocked,omitempty"`
 	}
 	out := []jobInfo{}
 	for _, j := range s.cfg().Jobs {
@@ -798,6 +806,7 @@ func (s *Server) apiListJobs(w http.ResponseWriter, r *http.Request) {
 			Runs:     len(runs),
 			Pending:  s.runner.Waiting(j.Name).Count,
 		}
+		info.Blocked = info.Pending > 0 && !info.Running && s.runner.GroupBusy(j.Group)
 		if len(runs) > 0 {
 			info.LastStatus = string(runs[0].Status)
 			t := runs[0].Start

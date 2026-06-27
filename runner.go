@@ -65,6 +65,16 @@ type Waiting struct {
 	FiresAt time.Time // when it will fire (valid if Armed)
 }
 
+// GroupBusy reports whether a job in the given concurrency group is running.
+func (rn *Runner) GroupBusy(group string) bool {
+	if group == "" {
+		return false
+	}
+	rn.mu.Lock()
+	defer rn.mu.Unlock()
+	return rn.groupBusy[group]
+}
+
 func (rn *Runner) Waiting(name string) Waiting {
 	rn.mu.Lock()
 	defer rn.mu.Unlock()
@@ -283,9 +293,9 @@ func (rn *Runner) run(job Job, trigger string, depth, coalesced int) (*Run, erro
 	}
 	r, err := rn.execute(job, trigger, coalesced)
 	rn.release(job) // release before chaining so a same-group child can run
-	if job.DebounceDur() > 0 {
-		rn.drainAfter(job)
-	}
+	// Always drain: even a non-debounced job that just freed a group may have a
+	// debounced group member waiting on it. No-op when nothing is pending.
+	rn.drainAfter(job)
 	if err != nil {
 		return nil, err
 	}
