@@ -32,6 +32,7 @@ type Server struct {
 	store      *Store
 	runner     *Runner
 	configPath string
+	version    string
 	tmpl       map[string]*template.Template
 }
 
@@ -61,8 +62,8 @@ func (s *Server) Reload() error {
 	return nil
 }
 
-func NewServer(cfgp *atomic.Pointer[Config], schedp *atomic.Pointer[Scheduler], store *Store, runner *Runner, configPath string) (*Server, error) {
-	s := &Server{cfgp: cfgp, schedp: schedp, store: store, runner: runner, configPath: configPath}
+func NewServer(cfgp *atomic.Pointer[Config], schedp *atomic.Pointer[Scheduler], store *Store, runner *Runner, configPath, version string) (*Server, error) {
+	s := &Server{cfgp: cfgp, schedp: schedp, store: store, runner: runner, configPath: configPath, version: version}
 
 	funcs := template.FuncMap{
 		"dur":         humanDur,
@@ -70,6 +71,7 @@ func NewServer(cfgp *atomic.Pointer[Config], schedp *atomic.Pointer[Scheduler], 
 		"reltime":     s.reltime,
 		"statusClass": statusClass,
 		"sparkline":   sparkline,
+		"version":     func() string { return s.version },
 	}
 	s.tmpl = map[string]*template.Template{}
 	for _, page := range []string{"index.html", "job.html", "run.html"} {

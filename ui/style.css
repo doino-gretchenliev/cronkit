@@ -173,6 +173,10 @@ svg.chain .edge { stroke-width: 1.5; }
 .legend .lg.ok { color: var(--ok); }
 .legend .lg.fail { color: var(--fail); }
 
+.foot { margin: 32px 0 8px; text-align: center; color: var(--muted); font-size: 12px; }
+.foot a { color: var(--muted); }
+.foot a:hover { color: var(--fg); }
+
 .sparkwrap { margin: 14px 0 4px; }
 svg.spark .bar.ok      { fill: var(--ok); }
 svg.spark .bar.fail    { fill: var(--fail); }

@@ -8,14 +8,38 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"sync/atomic"
 	"syscall"
 	"time"
 )
+
+// version is set via -ldflags "-X main.version=..." at build time; otherwise it
+// falls back to the VCS revision embedded by the Go toolchain.
+var version = "dev"
+
+func resolveVersion() string {
+	if version != "dev" {
+		return version
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		for _, s := range bi.Settings {
+			if s.Key == "vcs.revision" {
+				rev := s.Value
+				if len(rev) > 12 {
+					rev = rev[:12]
+				}
+				return "dev+" + rev
+			}
+		}
+	}
+	return version
+}
 
 func env(key, def string) string {
 	if v := os.Getenv(key); v != "" {
@@ -29,9 +53,15 @@ func main() {
 	var (
 		configPath = flag.String("config", env("CRONKIT_CONFIG", "jobs.yml"), "path to the jobs config file")
 		dataDir    = flag.String("data", env("CRONKIT_DATA", "./data"), "directory for run records and logs")
-		addr       = flag.String("addr", env("CRONKIT_ADDR", ":8080"), "HTTP listen address")
+		addr        = flag.String("addr", env("CRONKIT_ADDR", ":8080"), "HTTP listen address")
+		showVersion = flag.Bool("version", false, "print version and exit")
 	)
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("cronkit", resolveVersion())
+		return
+	}
 
 	cfg, err := LoadConfig(*configPath)
 	if err != nil {
@@ -58,7 +88,7 @@ func main() {
 	schedp.Store(sched)
 	defer func() { schedp.Load().Stop() }()
 
-	srv, err := NewServer(cfgp, schedp, store, runner, *configPath)
+	srv, err := NewServer(cfgp, schedp, store, runner, *configPath, resolveVersion())
 	if err != nil {
 		log.Fatalf("server: %v", err)
 	}
@@ -74,7 +104,7 @@ func main() {
 
 	httpSrv := &http.Server{Addr: *addr, Handler: srv.Mux()}
 	go func() {
-		log.Printf("cronkit listening on %s — %d jobs, tz %s, keep %d runs", *addr, len(cfg.Jobs), cfg.Timezone, cfg.KeepRuns)
+		log.Printf("cronkit %s listening on %s — %d jobs, tz %s, keep %d runs", resolveVersion(), *addr, len(cfg.Jobs), cfg.Timezone, cfg.KeepRuns)
 		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("http: %v", err)
 		}

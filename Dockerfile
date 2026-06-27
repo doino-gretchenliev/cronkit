@@ -2,11 +2,12 @@
 
 # ---- build ----
 FROM golang:1.25-alpine AS build
+ARG VERSION=dev
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /cronkit .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /cronkit .
 
 # ---- runtime ----
 FROM alpine:3.20
