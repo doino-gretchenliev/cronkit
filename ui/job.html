@@ -6,6 +6,8 @@
   {{if .Job.Schedule}}<code>{{.Job.Schedule}}</code>{{else}}<span class="muted">manual/chain only</span>{{end}}{{if .Next}} · next {{reltime .Next}}{{end}}
   {{if .Job.Group}} · group <span class="badge group">{{.Job.Group}}</span>{{end}}
   {{if .Job.Timeout}} · timeout <code>{{.Job.Timeout}}</code>{{end}}
+  {{if .Job.Debounce}} · debounce <code>{{.Job.Debounce}}</code>{{end}}
+  {{if gt .Pending 0}} · <span class="badge pending">pending ×{{.Pending}}</span>{{if .Fires}} fires {{reltime .Fires}}{{end}}{{end}}
 </p>
 {{if .Job.Description}}<p class="desc">{{.Job.Description}}</p>{{end}}
 <pre class="cmd">{{.Job.Command}}</pre>

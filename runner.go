@@ -40,6 +40,7 @@ type Runner struct {
 	pending   map[string]int                // job name -> coalesced triggers awaiting a run
 	timers    map[string]*time.Timer        // job name -> debounce timer
 	firstAt   map[string]time.Time          // job name -> first trigger of the current batch
+	firesAt   map[string]time.Time          // job name -> when the armed debounce timer fires
 }
 
 func NewRunner(cfgp *atomic.Pointer[Config], store *Store) *Runner {
@@ -53,7 +54,26 @@ func NewRunner(cfgp *atomic.Pointer[Config], store *Store) *Runner {
 		pending:   map[string]int{},
 		timers:    map[string]*time.Timer{},
 		firstAt:   map[string]time.Time{},
+		firesAt:   map[string]time.Time{},
 	}
+}
+
+// Waiting reports a job's debounce/coalesce state for the UI/API.
+type Waiting struct {
+	Count   int       // triggers coalesced and awaiting a run
+	Armed   bool      // a debounce timer is armed (waiting to fire)
+	FiresAt time.Time // when it will fire (valid if Armed)
+}
+
+func (rn *Runner) Waiting(name string) Waiting {
+	rn.mu.Lock()
+	defer rn.mu.Unlock()
+	w := Waiting{Count: rn.pending[name]}
+	if _, ok := rn.timers[name]; ok {
+		w.Armed = true
+		w.FiresAt = rn.firesAt[name]
+	}
+	return w
 }
 
 // TriggerResult describes what a Trigger call did.
@@ -98,6 +118,7 @@ func (rn *Runner) Trigger(job Job, source string) TriggerResult {
 		t.Stop()
 	}
 	name := job.Name
+	rn.firesAt[name] = now.Add(delay)
 	rn.timers[name] = time.AfterFunc(delay, func() { rn.fireBatch(name) })
 	return TriggerResult{Action: "debounced", FiresAt: now.Add(delay)}
 }
@@ -107,6 +128,7 @@ func (rn *Runner) fireBatch(name string) {
 	rn.mu.Lock()
 	delete(rn.timers, name)
 	delete(rn.firstAt, name)
+	delete(rn.firesAt, name)
 	if rn.running[name] {
 		rn.mu.Unlock() // pending stays; drainAfter fires it when the run finishes
 		return

@@ -172,8 +172,10 @@ type jobRow struct {
 	RunCount int // recorded (retained) runs
 	Next     *time.Time
 	Running  bool
-	Disabled bool // disabled from the UI
-	Enabled  bool // effective: config-enabled AND not UI-disabled
+	Disabled bool       // disabled from the UI
+	Enabled  bool       // effective: config-enabled AND not UI-disabled
+	Pending  int        // coalesced triggers awaiting a run
+	Fires    *time.Time // when a debounced run will fire (if waiting)
 }
 
 // noGroup is the group-filter sentinel for "jobs with no group".
@@ -225,6 +227,16 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		}
 		if n, ok := s.sched().NextRun(j.Name); ok {
 			row.Next = &n
+		}
+		if w := s.runner.Waiting(j.Name); w.Count > 0 {
+			row.Pending = w.Count
+			if w.Armed {
+				ft := w.FiresAt
+				row.Fires = &ft
+				if row.Next == nil {
+					row.Next = &ft // surface the fire time for schedule-less jobs
+				}
+			}
 		}
 		rows = append(rows, row)
 	}
@@ -417,6 +429,13 @@ func (s *Server) handleJob(w http.ResponseWriter, r *http.Request) {
 	}
 	if n, ok := s.sched().NextRun(name); ok {
 		data["Next"] = &n
+	}
+	if w := s.runner.Waiting(name); w.Count > 0 {
+		data["Pending"] = w.Count
+		if w.Armed {
+			ft := w.FiresAt
+			data["Fires"] = &ft
+		}
 	}
 	s.render(w, "job.html", data)
 }
@@ -640,12 +659,14 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	runs := &strings.Builder{}
 	running := &strings.Builder{}
 	disabled := &strings.Builder{}
+	pending := &strings.Builder{}
 	dur.WriteString("# HELP cronkit_job_last_duration_seconds Duration of the last run.\n# TYPE cronkit_job_last_duration_seconds gauge\n")
 	exit.WriteString("# HELP cronkit_job_last_exit_code Exit code of the last run.\n# TYPE cronkit_job_last_exit_code gauge\n")
 	ts.WriteString("# HELP cronkit_job_last_run_timestamp_seconds Start time of the last run (unix).\n# TYPE cronkit_job_last_run_timestamp_seconds gauge\n")
 	runs.WriteString("# HELP cronkit_job_runs_total Retained run count by status.\n# TYPE cronkit_job_runs_total counter\n")
 	running.WriteString("# HELP cronkit_job_running Whether the job is currently running.\n# TYPE cronkit_job_running gauge\n")
 	disabled.WriteString("# HELP cronkit_job_disabled Whether the job is disabled.\n# TYPE cronkit_job_disabled gauge\n")
+	pending.WriteString("# HELP cronkit_job_pending Coalesced triggers awaiting a run.\n# TYPE cronkit_job_pending gauge\n")
 
 	for _, j := range cfg.Jobs {
 		ql := metricLabel(j.Name)
@@ -676,6 +697,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 			dis = 1
 		}
 		fmt.Fprintf(disabled, "cronkit_job_disabled{job=\"%s\"} %d\n", ql, dis)
+		fmt.Fprintf(pending, "cronkit_job_pending{job=\"%s\"} %d\n", ql, s.runner.Waiting(j.Name).Count)
 	}
 	b.WriteString(last.String())
 	b.WriteString(dur.String())
@@ -684,6 +706,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	b.WriteString(runs.String())
 	b.WriteString(running.String())
 	b.WriteString(disabled.String())
+	b.WriteString(pending.String())
 
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	_, _ = io.WriteString(w, b.String())
@@ -761,6 +784,7 @@ func (s *Server) apiListJobs(w http.ResponseWriter, r *http.Request) {
 		LastStatus string     `json:"last_status,omitempty"`
 		LastRun    *time.Time `json:"last_run,omitempty"`
 		Runs       int        `json:"runs"`
+		Pending    int        `json:"pending,omitempty"`
 	}
 	out := []jobInfo{}
 	for _, j := range s.cfg().Jobs {
@@ -772,6 +796,7 @@ func (s *Server) apiListJobs(w http.ResponseWriter, r *http.Request) {
 			Enabled:  j.IsEnabled() && !s.runner.IsDisabled(j.Name),
 			Running:  s.runner.IsRunning(j.Name),
 			Runs:     len(runs),
+			Pending:  s.runner.Waiting(j.Name).Count,
 		}
 		if len(runs) > 0 {
 			info.LastStatus = string(runs[0].Status)
